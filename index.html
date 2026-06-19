@@ -103,6 +103,8 @@ h3{font-weight:600;font-size:.95rem}
 .inst-row{display:flex;gap:9px;align-items:center;margin-bottom:9px;flex-wrap:wrap}
 .inst-row input{padding:8px 11px;border:2px solid var(--border);border-radius:8px;font-size:.88rem;font-family:'Inter',sans-serif;color:var(--text);outline:none;flex:1;min-width:120px}
 .inst-row input:focus{border-color:var(--navy)}
+.admin-toggle{display:flex;align-items:center;gap:6px;font-size:.82rem;color:var(--text);font-weight:600;cursor:pointer;flex:0 0 auto;white-space:nowrap;padding:8px 10px;border:2px solid var(--border);border-radius:8px;background:var(--bg)}
+.admin-toggle input[type=checkbox]{flex:0 0 auto;width:auto;min-width:0;accent-color:var(--navy);cursor:pointer}
 .mc-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
 .mc-row input[type=radio]{width:auto;cursor:pointer;accent-color:var(--navy)}
 .mc-row .mc-lbl{font-size:.8rem;color:var(--muted);width:50px;flex-shrink:0}
@@ -135,7 +137,7 @@ const QUESTION_BANK = [{"id": "q1", "type": "tf", "text": "\"Cover\" stops incom
 const S = {
   mode:'home', title:'Commissioned School Security Officer Exam',
   questions:QUESTION_BANK.map(q=>({...q})),
-  instructors:[{"id": "i1", "name": "Rob Jennings", "email": "rob.jennings@gettrainedbeready.com"}, {"id": "i2", "name": "Duke Bender", "email": "duke.bender@gettrainedbeready.com"}, {"id": "i3", "name": "John Bailey", "email": "john.bailey@gettrainedbeready.com"}, {"id": "i4", "name": "John Miller", "email": "john.miller@gettrainedbeready.com"}, {"id": "i5", "name": "Phil Robinson", "email": "phil.robinson@gettrainedbeready.com"}, {"id": "i6", "name": "Marvin Kelley", "email": "marvin.kelley@gettrainedbeready.com"}], student:{name:'',email:'',instId:''},
+  instructors:[{"id": "i1", "name": "Rob Jennings", "email": "rob.jennings@gettrainedbeready.com", "isAdmin": true}, {"id": "i2", "name": "Duke Bender", "email": "duke.bender@gettrainedbeready.com", "isAdmin": true}, {"id": "i3", "name": "John Bailey", "email": "john.bailey@gettrainedbeready.com", "isAdmin": false}, {"id": "i4", "name": "John Miller", "email": "john.miller@gettrainedbeready.com", "isAdmin": false}, {"id": "i5", "name": "Phil Robinson", "email": "phil.robinson@gettrainedbeready.com", "isAdmin": false}, {"id": "i6", "name": "Marvin Kelley", "email": "marvin.kelley@gettrainedbeready.com", "isAdmin": false}], student:{name:'',email:'',instId:''},
   answers:{}, results:null, edTab:'questions',
   emailjs:{publicKey:'vT52P-d6KS2Z2kpfT',serviceId:'service_ppq5oh8',templateId:'template_e2t6354'},
   sendStatus:null,
@@ -196,11 +198,16 @@ function openEditor(){
   if(isAdminUnlocked()){ go('editor'); return; }
   go('adminlock');
 }
+function getAdminEligible(){ return S.instructors.filter(i=>i.isAdmin); }
 async function tryAdminUnlock(){
+  const sel=document.getElementById('adminWho');
   const val=document.getElementById('adminPw').value;
   const err=document.getElementById('adminErr');
+  const who=sel?sel.value:'';
+  const eligible=getAdminEligible();
+  const match=eligible.find(i=>i.id===who);
   const hash=await sha256Hex(val);
-  if(hash===ADMIN_HASH){
+  if(match && hash===ADMIN_HASH){
     sessionStorage.setItem('csso_admin','1');
     go('editor');
   } else {
@@ -225,7 +232,7 @@ function renderHome(){
     '<div class="home-card-icon">📝</div><h3>Take the Exam</h3>' +
     '<p>'+(hasI?'Enter your details and begin the exam':'Exam setup is not complete yet. Please check with your instructor.')+'</p>' +
     '</div></div>' +
-    '<p style="text-align:center;margin-top:28px"><a href="#" onclick="openEditor();return false;" style="font-size:.72rem;color:var(--muted);text-decoration:none">Instructor Access</a></p>' +
+    '<p style="text-align:center;margin-top:28px"><a href="#" onclick="openEditor();return false;" style="font-size:.72rem;color:var(--muted);text-decoration:none">Admin Access</a></p>' +
     '</div>'
   );
 }
@@ -233,17 +240,30 @@ function renderHome(){
 /* ADMIN LOCK SCREEN */
 function renderAdminLock(){
   set('nav-area','<div class="nav-back"><button onclick="goHome()">← Home</button></div>');
+  const eligible=getAdminEligible();
+  if(!eligible.length){
+    set('app',
+      '<div class="wrap fade"><div class="card" style="max-width:380px;margin:0 auto;text-align:center">' +
+      '<h2 style="margin-bottom:8px">Admin Access</h2>' +
+      '<p style="color:var(--muted);font-size:.85rem">No instructors are currently flagged as admins. Ask whoever set this up to re-enable an admin from the instructor list.</p>' +
+      '</div></div>'
+    );
+    return;
+  }
+  const opts=eligible.map(i=>'<option value="'+i.id+'">'+esc(i.name)+'</option>').join('');
   set('app',
     '<div class="wrap fade"><div class="card" style="max-width:380px;margin:0 auto">' +
-    '<h2 style="margin-bottom:5px">Instructor Access</h2>' +
-    '<p style="color:var(--muted);margin-bottom:18px;font-size:.85rem">Enter the admin password to manage questions and instructors.</p>' +
+    '<h2 style="margin-bottom:5px">Admin Access</h2>' +
+    '<p style="color:var(--muted);margin-bottom:18px;font-size:.85rem">Select your name and enter the admin password to manage questions and instructors.</p>' +
+    '<div class="fg"><label>Your Name</label>' +
+    '<select id="adminWho"><option value="">— Select your name —</option>'+opts+'</select></div>' +
     '<div class="fg"><label>Password</label>' +
     '<input id="adminPw" type="password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')tryAdminUnlock()"></div>' +
-    '<div id="adminErr" class="warn">Incorrect password. Please try again.</div>' +
+    '<div id="adminErr" class="warn">Incorrect name/password combination. Please try again.</div>' +
     '<button class="btn btn-primary btn-full btn-lg" style="margin-top:6px" onclick="tryAdminUnlock()">Unlock</button>' +
     '</div></div>'
   );
-  setTimeout(()=>{ const el=document.getElementById('adminPw'); if(el) el.focus(); },50);
+  setTimeout(()=>{ const el=document.getElementById('adminWho'); if(el) el.focus(); },50);
 }
 
 /* INFO */
@@ -587,6 +607,7 @@ function buildInstructorsTab(){
       rows+='<div class="inst-row">' +
         '<input type="text" value="'+esc(inst.name)+'" placeholder="Instructor Name" data-i="'+i+'" oninput="S.instructors[+this.dataset.i].name=this.value">' +
         '<input type="email" value="'+esc(inst.email)+'" placeholder="instructor@school.edu" data-i="'+i+'" oninput="S.instructors[+this.dataset.i].email=this.value" style="flex:1.4">' +
+        '<label class="admin-toggle"><input type="checkbox" '+(inst.isAdmin?'checked':'')+' data-i="'+i+'" onchange="toggleAdmin(+this.dataset.i,this.checked)"> Admin</label>' +
         '<button class="btn btn-danger btn-sm" data-i="'+i+'" onclick="removeInst(+this.dataset.i)">Remove</button>' +
         '</div>';
     });
@@ -594,12 +615,33 @@ function buildInstructorsTab(){
     rows='<p style="color:var(--muted);font-size:.88rem;padding:8px 0">No instructors yet. Click Add Instructor below.</p>';
   }
   return '<h3 style="margin-bottom:5px">Instructor Roster</h3>' +
-    '<p style="color:var(--muted);font-size:.84rem;margin-bottom:18px">Students select their instructor when starting the exam. Results are emailed to the selected instructor.</p>' +
+    '<p style="color:var(--muted);font-size:.84rem;margin-bottom:6px">Students select their instructor when starting the exam. Results are emailed to the selected instructor.</p>' +
+    '<p style="color:var(--muted);font-size:.84rem;margin-bottom:18px">Check <strong>Admin</strong> for anyone who should be able to log into Edit &amp; Setup. Unchecked instructors still receive exam results — they just can\'t access this editor.</p>' +
     '<div id="instList">'+rows+'</div>' +
     '<button class="btn btn-outline" style="margin-top:12px" onclick="addInst()">+ Add Instructor</button>';
 }
-function addInst(){S.instructors.push({id:uid(),name:'',email:''});renderEdBody();}
-function removeInst(i){if(!confirm('Remove this instructor?')) return;S.instructors.splice(i,1);renderEdBody();}
+function addInst(){S.instructors.push({id:uid(),name:'',email:'',isAdmin:false});renderEdBody();}
+function removeInst(i){
+  const inst=S.instructors[i];
+  const otherAdminsRemain = S.instructors.some((x,idx)=> idx!==i && x.isAdmin);
+  if(inst.isAdmin && !otherAdminsRemain){
+    if(!confirm('"'+(inst.name||'This instructor')+'" is the only remaining admin. Removing them would leave nobody able to log into this editor. Continue anyway?')) return;
+  } else if(!confirm('Remove this instructor?')){
+    return;
+  }
+  S.instructors.splice(i,1);
+  renderEdBody();
+}
+function toggleAdmin(i,checked){
+  const willHaveAdmins = S.instructors.filter((inst,idx)=> idx===i ? checked : inst.isAdmin).length>0;
+  if(!checked && !willHaveAdmins){
+    if(!confirm('This would leave no admins at all — nobody (including you) would be able to get back into this editor unless someone is re-enabled later by directly editing the file. Continue anyway?')){
+      renderEdBody();
+      return;
+    }
+  }
+  S.instructors[i].isAdmin=checked;
+}
 
 function buildSettingsTab(){
   const ej=S.emailjs;
