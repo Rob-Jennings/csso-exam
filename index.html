@@ -47,6 +47,7 @@ h3{font-weight:600;font-size:.95rem}
 .fg input:focus,.fg textarea:focus,.fg select:focus{border-color:var(--navy)}
 .fg textarea{resize:vertical;min-height:72px}
 .home-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px;margin-bottom:18px}
+.home-grid-single{display:block}
 @media(max-width:440px){.home-grid{grid-template-columns:1fr}}
 .home-card{background:var(--surface);border-radius:var(--radius);box-shadow:var(--sh);padding:22px;text-align:center;cursor:pointer;border:2px solid transparent;transition:all .18s}
 .home-card:hover:not(.disabled){border-color:var(--navy);transform:translateY(-2px);box-shadow:var(--sh-lg)}
@@ -169,15 +170,39 @@ function answerLabel(q,idx){
 
 function render(){
   set('app',''); set('nav-area',''); set('hdr-right','');
-  ({home:renderHome,info:renderInfo,test:renderTest,results:renderResults,editor:renderEditor}[S.mode]||renderHome)();
+  ({home:renderHome,info:renderInfo,test:renderTest,results:renderResults,editor:renderEditor,adminlock:renderAdminLock}[S.mode]||renderHome)();
 }
 
 /* Named helpers to avoid quote-in-onclick issues */
 function startExam(){ if(S.instructors.length>0) go('info'); }
-function openEditor(){ go('editor'); }
 function goHome(){ go('home'); }
 
-/* HOME */
+/* ── ADMIN AUTH ── */
+const ADMIN_HASH = 'a019f6073a5e50f127c7cffb8ed1a977bd5209b5842e3e9484d4134cf5e13bbd';
+async function sha256Hex(str){
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function isAdminUnlocked(){ return sessionStorage.getItem('csso_admin')==='1'; }
+function openEditor(){
+  if(isAdminUnlocked()){ go('editor'); return; }
+  go('adminlock');
+}
+async function tryAdminUnlock(){
+  const val=document.getElementById('adminPw').value;
+  const err=document.getElementById('adminErr');
+  const hash=await sha256Hex(val);
+  if(hash===ADMIN_HASH){
+    sessionStorage.setItem('csso_admin','1');
+    go('editor');
+  } else {
+    if(err) err.classList.add('show');
+    document.getElementById('adminPw').value='';
+    document.getElementById('adminPw').focus();
+  }
+}
+
+/* HOME (students only — no editor link visible) */
 function renderHome(){
   const n=S.questions.length, hasI=S.instructors.length>0;
   const takeCls = hasI ? 'home-card' : 'home-card disabled';
@@ -187,18 +212,30 @@ function renderHome(){
     '<h1 style="margin-bottom:7px">'+esc(S.title)+'</h1>' +
     '<p style="color:var(--muted)">'+n+' questions &nbsp;&middot;&nbsp; True/False &amp; Multiple Choice</p>' +
     '</div>' +
-    '<div class="home-grid">' +
-    '<div class="'+takeCls+'" onclick="startExam()">' +
+    '<div class="home-grid home-grid-single">' +
+    '<div class="'+takeCls+'" onclick="startExam()" style="max-width:340px;margin:0 auto">' +
     '<div class="home-card-icon">📝</div><h3>Take the Exam</h3>' +
-    '<p>'+(hasI?'Enter your details and begin the exam':'Add instructors in Edit &amp; Setup first')+'</p>' +
-    '</div>' +
-    '<div class="home-card" onclick="openEditor()">' +
-    '<div class="home-card-icon">⚙️</div><h3>Edit &amp; Setup</h3>' +
-    '<p>Manage questions, add instructors, configure settings</p>' +
+    '<p>'+(hasI?'Enter your details and begin the exam':'Exam setup is not complete yet. Please check with your instructor.')+'</p>' +
     '</div></div>' +
-    (!hasI?'<div class="info-box info-amber">⚠️ Add at least one instructor in <strong>Edit &amp; Setup → Instructors</strong> before students can take the exam.</div>':'') +
+    '<p style="text-align:center;margin-top:28px"><a href="#" onclick="openEditor();return false;" style="font-size:.72rem;color:var(--muted);text-decoration:none">Instructor Access</a></p>' +
     '</div>'
   );
+}
+
+/* ADMIN LOCK SCREEN */
+function renderAdminLock(){
+  set('nav-area','<div class="nav-back"><button onclick="goHome()">← Home</button></div>');
+  set('app',
+    '<div class="wrap fade"><div class="card" style="max-width:380px;margin:0 auto">' +
+    '<h2 style="margin-bottom:5px">Instructor Access</h2>' +
+    '<p style="color:var(--muted);margin-bottom:18px;font-size:.85rem">Enter the admin password to manage questions and instructors.</p>' +
+    '<div class="fg"><label>Password</label>' +
+    '<input id="adminPw" type="password" placeholder="••••••••" onkeydown="if(event.key===\'Enter\')tryAdminUnlock()"></div>' +
+    '<div id="adminErr" class="warn">Incorrect password. Please try again.</div>' +
+    '<button class="btn btn-primary btn-full btn-lg" style="margin-top:6px" onclick="tryAdminUnlock()">Unlock</button>' +
+    '</div></div>'
+  );
+  setTimeout(()=>{ const el=document.getElementById('adminPw'); if(el) el.focus(); },50);
 }
 
 /* INFO */
@@ -396,6 +433,7 @@ function sendEmail(){
 
 /* EDITOR */
 function renderEditor(){
+  if(!isAdminUnlocked()){ go('adminlock'); return; }
   set('nav-area','<div class="nav-back-w"><button onclick="saveExit()">← Save &amp; Exit</button></div>');
   set('hdr-right','<button class="btn btn-ghost btn-sm" onclick="saveAll()">💾 Save</button>');
   const tabDefs=[
